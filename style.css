@@ -51,6 +51,12 @@ input:focus, textarea:focus, select:focus {
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
 }
 
+/* Ensure the bank name label/input keeps normal casing and appearance */
+label[for="bank-name"], input#bank-name {
+    text-transform: none;
+    /* match other label styling; keep font-weight and color from utility classes */
+}
+
 /* Error styles */
 .border-red-500 {
     border-color: #ef4444 !important;

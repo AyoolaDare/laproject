@@ -1,0 +1,23 @@
+# .gitignore
+
+# --- Secrets ---
+# Ignore the file containing secret passwords and API keys. This is critical for security.
+.env
+
+# --- Python ---
+# Ignore the virtual environment folder, which is specific to your local machine and can be very large.
+.venv/
+venv/
+
+# Ignore Python bytecode and cache files that are generated automatically.
+__pycache__/
+*.pyc
+
+# --- IDE/Editor Folders ---
+# Ignore configuration folders from common code editors.
+.vscode/
+.idea/
+
+# --- Other ---
+# Ignore Mac-specific system files.
+.DS_Store

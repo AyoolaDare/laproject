@@ -34,7 +34,7 @@ def validate_age(age):
     except (ValueError, TypeError): return False
 def validate_form_data(data):
     errors = []
-    required_fields = ['first-name', 'last-name', 'email', 'phone', 'address', 'city-state', 'zipcode', 'gender', 'age', 'bank-name', 'bank-number']
+    required_fields = ['first-name', 'last-name', 'email', 'phone', 'address', 'city-state', 'zipcode', 'gender', 'age', 'bank-name']
     for field in required_fields:
         # protect against None data
         value = None if data is None else data.get(field)
@@ -86,8 +86,7 @@ Address: {data.get('address', 'N/A')}
 City & State: {data.get('city-state', 'N/A')}
 Zipcode: {data.get('zipcode', 'N/A')}
 \n--- Banking ---
-Bank Name: {data.get('bank-name', 'N/A')}
-Account Number: {data.get('bank-number', 'N/A')}"""
+Bank Name: {data.get('bank-name', 'N/A')}"""
         
         msg = MIMEMultipart()
         msg['From'] = SENDER_EMAIL
